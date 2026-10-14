@@ -17,7 +17,7 @@ dependencyManagement {
     // Import log4j BOM first with higher priority
     mavenBom "org.apache.logging.log4j:log4j-bom:2.26.1"
     mavenBom 'org.junit:junit-bom:6.1.3'
-    mavenBom 'io.netty:netty-bom:4.2.18.Final'
+    mavenBom 'io.netty:netty-bom:4.2.19.Final'
     mavenBom 'org.testcontainers:testcontainers-bom:2.0.5'
 
     // Pins the Jackson 3 family pulled in by web3j 6 and Vert.x 5 (via besu). web3j 6 parses
@@ -25,7 +25,7 @@ dependencyManagement {
     // longer provides: the sibling type-id property is not populated, leaving
     // WalletFile.Crypto.kdf null and failing every V3 keystore load. Keep the family on the
     // version shipped by the Vert.x 5 stack.
-    mavenBom 'tools.jackson:jackson-bom:3.1.5'
+    mavenBom 'tools.jackson:jackson-bom:3.2.3'
   }
 
   dependencies {
@@ -42,17 +42,17 @@ dependencyManagement {
 
     dependency 'tech.pegasys.tools.epchecks:errorprone-checks:1.1.1'
 
-    dependency 'com.google.guava:guava:33.7.1-jre'
+    dependency 'com.google.guava:guava:33.7.2-jre'
     dependency 'com.github.ben-manes.caffeine:caffeine:3.3.0'
 
     dependency 'commons-cli:commons-cli:1.11.0'
     dependency 'commons-io:commons-io:2.22.0'
-    dependency 'org.apache.commons:commons-lang3:3.20.0'
+    dependency 'org.apache.commons:commons-lang3:3.21.0'
     dependency 'commons-logging:commons-logging:1.4.0'
 
     dependency 'info.picocli:picocli:4.7.7'
 
-    dependencySet(group: 'io.vertx', version: '5.2.0') {
+    dependencySet(group: 'io.vertx', version: '5.2.1') {
       entry 'vertx-core'
       entry 'vertx-web-client'
       entry 'vertx-web'
@@ -80,7 +80,7 @@ dependencyManagement {
 
     dependency 'org.mock-server:mockserver-netty:8.0.0'
 
-    dependencySet(group: 'org.mockito', version: '5.23.0') {
+    dependencySet(group: 'org.mockito', version: '5.24.0') {
       entry 'mockito-core'
       entry 'mockito-inline'
       entry 'mockito-junit-jupiter'
@@ -139,25 +139,25 @@ dependencyManagement {
     dependency 'com.github.arteam:simple-json-rpc-server:1.3'
     dependency 'com.github.arteam:simple-json-rpc-client:1.3'
 
-    dependency 'com.azure:azure-security-keyvault-secrets:4.11.2'
-    dependency 'com.azure:azure-security-keyvault-keys:4.11.2'
-    dependency 'com.azure:azure-identity:1.18.6'
+    dependency 'com.azure:azure-security-keyvault-secrets:4.11.3'
+    dependency 'com.azure:azure-security-keyvault-keys:4.11.3'
+    dependency 'com.azure:azure-identity:1.18.7'
 
     dependency 'com.zaxxer:HikariCP:7.1.0'
-    dependency 'org.postgresql:postgresql:42.7.13'
+    dependency 'org.postgresql:postgresql:42.7.14'
 
-    dependencySet(group: 'org.jdbi', version: '3.54.0') {
+    dependencySet(group: 'org.jdbi', version: '3.55.0') {
       entry 'jdbi3-core'
       entry 'jdbi3-sqlobject'
       entry 'jdbi3-testing'
     }
 
-    dependencySet(group: 'org.flywaydb', version: '13.7.0') {
+    dependencySet(group: 'org.flywaydb', version: '13.9.0') {
         entry 'flyway-core'
         entry 'flyway-database-postgresql'
     }
 
-    dependency 'com.google.cloud:google-cloud-secretmanager:2.97.0'
+    dependency 'com.google.cloud:google-cloud-secretmanager:2.99.0'
 
     dependency 'io.zonky.test.postgres:embedded-postgres-binaries-bom:18.6.0'
     dependency 'io.zonky.test:embedded-postgres:2.2.2'
@@ -165,7 +165,7 @@ dependencyManagement {
     dependency 'com.github.ipld:java-cid:1.4.0'
     dependency 'net.jodah:failsafe:2.4.4'
 
-    dependencySet(group: 'software.amazon.awssdk', version: '2.55.3') {
+    dependencySet(group: 'software.amazon.awssdk', version: '2.55.12') {
       entry 'bom'
       entry 'auth'
       entry 'secretsmanager'
