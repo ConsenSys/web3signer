@@ -8,6 +8,8 @@
 ### Breaking Changes
 
 ### CI/Build Enhancements
+- Gradle wrapper upgraded to 9.8.1.
+- Project version calculation needs the `git` executable on `PATH`; without it the version is `UNKNOWN+develop`.
 
 ### Security
 
