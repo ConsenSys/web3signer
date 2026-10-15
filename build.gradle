@@ -537,10 +537,12 @@ def calculateVersion() {
   return version
 }
 
+def publishVersion = rootProject.version
+
 tasks.register('printVersion') {
   doFirst {
     println "specific-version=${specificVersion}"
-    println "publish-version=${project.version}"
+    println "publish-version=${publishVersion}"
   }
 }
 
