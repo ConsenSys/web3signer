@@ -8,7 +8,7 @@
 ### Breaking Changes
 
 ### CI/Build Enhancements
-- Gradle wrapper upgraded to 9.8.1; Spotless plugin upgraded to 8.10.4 and `versions` plugin to 0.66.0. [#1257][PR_1257]
+- Gradle wrapper upgraded to 9.8.1 and Gradle build plugins updated. [#1257][PR_1257]
 - Project version calculation needs the `git` executable on `PATH`; without it the version is `UNKNOWN+develop`. [#1257][PR_1257]
 
 ### Security
