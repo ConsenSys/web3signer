@@ -8,8 +8,8 @@
 ### Breaking Changes
 
 ### CI/Build Enhancements
-- Gradle wrapper upgraded to 9.8.1.
-- Project version calculation needs the `git` executable on `PATH`; without it the version is `UNKNOWN+develop`.
+- Gradle wrapper upgraded to 9.8.1. [#1257][PR_1257]
+- Project version calculation needs the `git` executable on `PATH`; without it the version is `UNKNOWN+develop`. [#1257][PR_1257]
 
 ### Security
 
@@ -49,6 +49,7 @@
 [PR_1235]: https://github.com/Consensys-Incorporated/web3signer/pull/1235
 [PR_1237]: https://github.com/Consensys-Incorporated/web3signer/pull/1237
 [PR_1240]: https://github.com/Consensys-Incorporated/web3signer/pull/1240
+[PR_1257]: https://github.com/Consensys-Incorporated/web3signer/pull/1257
 
 ---
 ## 26.7.0
