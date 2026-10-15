@@ -34,7 +34,6 @@ plugins {
   id 'io.spring.dependency-management' version '1.1.7'
   id 'me.champeau.jmh' version '0.7.3' apply false
   id 'net.ltgt.errorprone' version '5.1.1'
-  id 'org.ajoberstar.grgit' version '5.3.3'
 }
 
 rootProject.version = calculatePublishVersion()
@@ -480,16 +479,37 @@ def buildTime() {
   return df.format(new Date())
 }
 
+// Runs git in the root project directory and returns its trimmed stdout, or null if git fails
+// (e.g. not a git checkout, no tags to describe) or is not installed.
+// providers.exec is the supported way to run a process at configuration time.
+def gitOutput(String... args) {
+  try {
+    def exec = providers.exec {
+      commandLine(['git'] + args.toList())
+      workingDir = rootProject.projectDir
+      ignoreExitValue = true
+    }
+    return exec.result.get().exitValue == 0 ? exec.standardOutput.asText.get().trim() : null
+  } catch (Exception ignored) {
+    return null
+  }
+}
+
+@Memoized
+def isGitCheckout() {
+  return gitOutput('rev-parse', '--git-dir') != null
+}
+
 // Calculate the version that this build would be published under (if it is published)
 // If this exact commit is tagged, use the tag
 // If this is on a release-* branch, use the most recent tag appended with +develop (e.g. 0.1.1-RC1+develop)
 // Otherwise, use develop
 def calculatePublishVersion() {
-  if (!grgit) {
+  if (!isGitCheckout()) {
     return 'develop'
   }
   def specificVersion = calculateVersion()
-  def isReleaseBranch = grgit.branch.current().name.startsWith('release-')
+  def isReleaseBranch = gitOutput('rev-parse', '--abbrev-ref', 'HEAD')?.startsWith('release-')
   if (specificVersion.contains('+')) {
     return isReleaseBranch ? "${specificVersion.substring(0, specificVersion.indexOf('+'))}+develop" : "develop"
   }
@@ -501,13 +521,13 @@ def calculatePublishVersion() {
 // Otherwise use git describe --tags and replace the - after the tag with a +
 @Memoized
 def calculateVersion() {
-  if (!grgit) {
+  if (!isGitCheckout()) {
     logger.warn("Not building from a git checkout. Version information will not be available. Building from a git checkout is strongly recommended.")
     return 'UNKNOWN+develop'
   }
-  String version = grgit.describe(tags: true)
+  String version = gitOutput('describe', '--tags')
   if (version == null) {
-    return "UNKNOWN+g${grgit.head().abbreviatedId}"
+    return "UNKNOWN+g${gitOutput('rev-parse', '--short=7', 'HEAD')}"
   }
   def versionPattern = ~/^(?<lastVersion>.*)-(?<devVersion>[0-9]+-g[a-z0-9]+)$/
   def matcher = version =~ versionPattern
