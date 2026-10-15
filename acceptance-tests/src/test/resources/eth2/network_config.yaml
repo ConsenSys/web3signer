@@ -44,6 +44,12 @@ ELECTRA_FORK_EPOCH: 2048
 FULU_FORK_VERSION: 0x70000910
 FULU_FORK_EPOCH: 18446744073709551615
 
+# Gloas
+# Must be disabled explicitly: CONFIG_NAME hoodi pulls in the built-in Hoodi config, which
+# schedules Gloas. Gloas scheduled with Fulu disabled makes Teku overflow computing the Fulu slot.
+GLOAS_FORK_VERSION: 0x80000910
+GLOAS_FORK_EPOCH: 18446744073709551615
+
 # Time parameters
 # ---------------------------------------------------------------
 # 12 seconds
