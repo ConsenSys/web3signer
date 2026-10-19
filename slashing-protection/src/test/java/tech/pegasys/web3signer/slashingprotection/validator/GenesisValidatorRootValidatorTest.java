@@ -184,6 +184,62 @@ class GenesisValidatorRootValidatorTest {
     assertThat(gvrValidator.genesisValidatorRootExists()).isTrue();
   }
 
+  @Test
+  void initialiseGenesisValidatorsRootStoresGvrInEmptyDatabase(
+      final Jdbi jdbi, final Handle handle) {
+    final GenesisValidatorRootValidator gvrValidator =
+        new GenesisValidatorRootValidator(jdbi, metadataDao);
+    final Bytes32 gvr = Bytes32.leftPad(Bytes.of(3));
+    final Bytes32 otherGvr = Bytes32.leftPad(Bytes.of(4));
+
+    gvrValidator.initialiseGenesisValidatorsRoot(gvr);
+
+    assertThat(
+            handle
+                .createQuery("SELECT genesis_validators_root FROM metadata WHERE id = ?")
+                .bind(0, 1)
+                .mapTo(Bytes32.class)
+                .findFirst())
+        .contains(gvr);
+
+    // the cache is primed, so subsequent checks do not interact with the database
+    assertThat(gvrValidator.checkGenesisValidatorsRootAndInsertIfEmpty(gvr)).isTrue();
+    assertThat(gvrValidator.checkGenesisValidatorsRootAndInsertIfEmpty(otherGvr)).isFalse();
+
+    verify(metadataDao, times(1)).findGenesisValidatorsRoot(any());
+    verify(metadataDao, times(1)).insertGenesisValidatorsRoot(any(), eq(gvr));
+  }
+
+  @Test
+  void initialiseGenesisValidatorsRootThrowsWhenDatabaseHoldsDifferentGvr(
+      final Jdbi jdbi, final Handle handle) {
+    final GenesisValidatorRootValidator gvrValidator =
+        new GenesisValidatorRootValidator(jdbi, metadataDao);
+    final Bytes32 gvr = Bytes32.leftPad(Bytes.of(3));
+    final Bytes32 otherGvr = Bytes32.leftPad(Bytes.of(4));
+    insertGvr(handle, gvr);
+
+    assertThatExceptionOfType(IllegalStateException.class)
+        .isThrownBy(() -> gvrValidator.initialiseGenesisValidatorsRoot(otherGvr))
+        .withMessageContaining(otherGvr.toHexString())
+        .withMessageContaining(gvr.toHexString());
+
+    verify(metadataDao, never()).insertGenesisValidatorsRoot(any(), any());
+  }
+
+  @Test
+  void initialiseGenesisValidatorsRootSucceedsWhenDatabaseHoldsSameGvr(
+      final Jdbi jdbi, final Handle handle) {
+    final GenesisValidatorRootValidator gvrValidator =
+        new GenesisValidatorRootValidator(jdbi, metadataDao);
+    final Bytes32 gvr = Bytes32.leftPad(Bytes.of(3));
+    insertGvr(handle, gvr);
+
+    gvrValidator.initialiseGenesisValidatorsRoot(gvr);
+
+    verify(metadataDao, never()).insertGenesisValidatorsRoot(any(), any());
+  }
+
   private void insertGvr(final Handle handle, final Bytes genesisValidatorsRoot) {
     handle.execute(
         "INSERT INTO metadata (id, genesis_validators_root) VALUES (?, ?)",

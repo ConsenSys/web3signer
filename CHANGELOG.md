@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+### Features Added
+
+### Bugs Fixed
+
+### Breaking Changes
+- With slashing protection enabled, eth2 mode now sets the genesis validators root (GVR) at startup from `--network` (mainnet, sepolia, holesky, hoodi, gnosis, chiado, lukso) or from a beacon state given by the new `--genesis-state` option (file or URL), instead of from the first signing request. Startup fails if the slashing protection database holds a different GVR. Other networks (custom config files, ephemery, minimal, ...) without `--genesis-state` keep setting it from the first signing request, and a warning is logged at startup when none is stored yet. [#1260][PR_1260]
+
+### CI/Build Enhancements
+
+### Security
+
+[PR_1260]: https://github.com/Consensys-Incorporated/web3signer/pull/1260
+
+---
 ## 26.10.0
 ### Features Added
 - Teku libraries updated to 26.10.1, which schedules the Gloas (Glamsterdam) fork for the Hoodi network at epoch 132352 (26 Oct 2026 17:42:48 UTC). Required update for the Hoodi Glamsterdam fork.

@@ -48,6 +48,16 @@ public class GenesisValidatorRootValidator {
         Failsafe.with(new RetryPolicy<>().handle(StatementException.class).withMaxRetries(1));
   }
 
+  public void initialiseGenesisValidatorsRoot(final Bytes32 genesisValidatorsRoot) {
+    final Bytes32 databaseGvr = insertAndCacheGVR(genesisValidatorsRoot);
+    if (!databaseGvr.equals(genesisValidatorsRoot)) {
+      throw new IllegalStateException(
+          String.format(
+              "Genesis validators root %s of the configured network does not match genesis validators root %s in the slashing protection database",
+              genesisValidatorsRoot, databaseGvr));
+    }
+  }
+
   public boolean checkGenesisValidatorsRootAndInsertIfEmpty(final Bytes32 genesisValidatorsRoot) {
     var cachedGVR = insertAndCacheGVR(genesisValidatorsRoot);
 

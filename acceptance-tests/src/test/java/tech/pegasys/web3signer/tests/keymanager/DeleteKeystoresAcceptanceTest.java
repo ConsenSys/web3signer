@@ -48,7 +48,7 @@ public class DeleteKeystoresAcceptanceTest extends KeyManagerTestBase {
     {
       "metadata" : {
         "interchange_format_version" : "5",
-        "genesis_validators_root" : "0x04700007fabc8282644aed6d1c7c9e21d38a03a0c4ba193f3afe428824b3a673"
+        "genesis_validators_root" : "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"
       },
       "data" : [ {
         "pubkey" : "0x98d083489b3b06b8740da2dfec5cc3c01b2086363fe023a9d7dc1f907633b1ff11f7b99b19e0533e969862270061d884",
@@ -69,7 +69,7 @@ public class DeleteKeystoresAcceptanceTest extends KeyManagerTestBase {
     {
       "metadata" : {
         "interchange_format_version" : "5",
-        "genesis_validators_root" : "0x04700007fabc8282644aed6d1c7c9e21d38a03a0c4ba193f3afe428824b3a673"
+        "genesis_validators_root" : "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95"
       },
       "data" : [ ]
     }""";

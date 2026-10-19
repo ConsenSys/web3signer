@@ -258,6 +258,16 @@ public class DbSlashingProtection implements SlashingProtection {
   }
 
   @Override
+  public void initialiseGenesisValidatorsRoot(final Bytes32 genesisValidatorsRoot) {
+    gvrValidator.initialiseGenesisValidatorsRoot(genesisValidatorsRoot);
+  }
+
+  @Override
+  public boolean hasGenesisValidatorsRoot() {
+    return gvrValidator.genesisValidatorRootExists();
+  }
+
+  @Override
   public boolean isEnabledValidator(final Bytes publicKey) {
     final int validatorId = registeredValidators.mustGetValidatorIdForPublicKey(publicKey);
     return jdbi.inTransaction(handle -> isEnabled(handle, validatorId));

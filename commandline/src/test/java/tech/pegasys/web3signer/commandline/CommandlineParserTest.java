@@ -237,6 +237,21 @@ class CommandlineParserTest {
   }
 
   @Test
+  void eth2SubcommandFailsWhenGenesisStateCannotBeRead() {
+    String cmdline = validBaseCommandOptions();
+    cmdline =
+        cmdline
+            + "eth2 --slashing-protection-db-url=jdbc:mock --genesis-state=/nonexistent/state.ssz";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+    assertThat(result).isNotZero();
+    assertThat(commandError.toString())
+        .contains(
+            "Unable to read genesis validators root from beacon state /nonexistent/state.ssz");
+  }
+
+  @Test
   void missingToInExportShowsError() {
     String cmdline = validBaseCommandOptions();
     cmdline = cmdline + "eth2 export";

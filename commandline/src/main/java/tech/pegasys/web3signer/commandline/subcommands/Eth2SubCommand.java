@@ -30,6 +30,7 @@ import tech.pegasys.web3signer.commandline.PicoCliAzureKeyVaultParameters;
 import tech.pegasys.web3signer.commandline.PicoCliGcpSecretManagerParameters;
 import tech.pegasys.web3signer.commandline.PicoCliSlashingProtectionParameters;
 import tech.pegasys.web3signer.commandline.VersionProvider;
+import tech.pegasys.web3signer.commandline.config.GenesisValidatorsRootResolver;
 import tech.pegasys.web3signer.commandline.config.KeyManagerApiParameters;
 import tech.pegasys.web3signer.commandline.config.PicoCommitBoostApiParameters;
 import tech.pegasys.web3signer.commandline.config.PicoKeystoresParameters;
@@ -43,12 +44,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.tuweni.bytes.Bytes32;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.HelpCommand;
@@ -169,6 +172,14 @@ public class Eth2SubCommand extends ModeSubCommand {
   private String trustedSetup = null; // Depends on network configuration
 
   @CommandLine.Option(
+      names = {"--genesis-state"},
+      paramLabel = "<STRING>",
+      description =
+          "Path or URL of an SSZ-encoded beacon state (genesis or later) of the network. Used to determine the genesis validators root for slashing protection at startup. Needed for custom networks; overrides the built-in value for known networks.",
+      arity = "1")
+  private String genesisState = null;
+
+  @CommandLine.Option(
       names = "--Xsigning-ext-enabled",
       description = "Set to true to enable signing extensions.",
       paramLabel = "<BOOL>",
@@ -184,6 +195,7 @@ public class Eth2SubCommand extends ModeSubCommand {
   @Mixin private KeyManagerApiParameters keyManagerApiParameters;
   @Mixin private PicoCommitBoostApiParameters commitBoostApiParameters;
   private tech.pegasys.teku.spec.Spec eth2Spec;
+  private Optional<Bytes32> genesisValidatorsRoot = Optional.empty();
 
   public Eth2SubCommand() {
     network = "mainnet";
@@ -196,6 +208,7 @@ public class Eth2SubCommand extends ModeSubCommand {
     return new Eth2Runner(
         config,
         slashingProtectionParameters,
+        genesisValidatorsRoot,
         azureKeyVaultParameters,
         keystoreParameters,
         awsSecretsManagerParameters,
@@ -275,6 +288,16 @@ public class Eth2SubCommand extends ModeSubCommand {
         && slashingProtectionParameters.getDbUrl() == null) {
       throw new ParameterException(
           commandSpec.commandLine(), "Missing slashing protection database url");
+    }
+
+    if (slashingProtectionParameters.isEnabled()) {
+      try {
+        genesisValidatorsRoot =
+            GenesisValidatorsRootResolver.resolve(
+                network, Optional.ofNullable(genesisState), eth2Spec);
+      } catch (final IllegalArgumentException e) {
+        throw new ParameterException(commandSpec.commandLine(), e.getMessage(), e);
+      }
     }
 
     validatePositiveValue(

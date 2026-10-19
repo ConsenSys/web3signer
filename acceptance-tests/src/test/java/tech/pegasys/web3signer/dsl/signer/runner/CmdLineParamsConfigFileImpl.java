@@ -458,6 +458,10 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
       yamlConfigMap.put("eth2.network", signerConfig.getNetwork().get());
     }
 
+    if (signerConfig.getGenesisState().isPresent()) {
+      yamlConfigMap.put("eth2.genesis-state", signerConfig.getGenesisState().get());
+    }
+
     return yamlConfigMap;
   }
 

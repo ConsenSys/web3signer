@@ -74,6 +74,7 @@ public class SignerConfiguration {
   private final Optional<Long> fuluForkEpoch;
   private final Optional<Long> gloasForkEpoch;
   private final Optional<String> network;
+  private final Optional<String> genesisState;
   private final boolean keyManagerApiEnabled;
   private Optional<WatermarkRepairParameters> watermarkRepairParameters;
   private int downstreamHttpPort;
@@ -126,6 +127,7 @@ public class SignerConfiguration {
       final Optional<Long> fuluForkEpoch,
       final Optional<Long> gloasForkEpoch,
       final Optional<String> network,
+      final Optional<String> genesisState,
       final boolean keyManagerApiEnabled,
       final Optional<WatermarkRepairParameters> watermarkRepairParameters,
       final int downstreamHttpPort,
@@ -174,6 +176,7 @@ public class SignerConfiguration {
     this.fuluForkEpoch = fuluForkEpoch;
     this.gloasForkEpoch = gloasForkEpoch;
     this.network = network;
+    this.genesisState = genesisState;
     this.keyManagerApiEnabled = keyManagerApiEnabled;
     this.watermarkRepairParameters = watermarkRepairParameters;
     this.downstreamHttpPort = downstreamHttpPort;
@@ -342,6 +345,10 @@ public class SignerConfiguration {
 
   public Optional<String> getNetwork() {
     return network;
+  }
+
+  public Optional<String> getGenesisState() {
+    return genesisState;
   }
 
   public boolean isKeyManagerApiEnabled() {

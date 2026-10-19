@@ -37,6 +37,7 @@ dependencies {
   implementation 'tech.pegasys.teku.internal:unsigned'
   implementation 'tech.pegasys.teku.internal:networks'
   implementation 'tech.pegasys.teku.internal:json'
+  implementation 'tech.pegasys.teku.internal:io'
 
   runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl'
 

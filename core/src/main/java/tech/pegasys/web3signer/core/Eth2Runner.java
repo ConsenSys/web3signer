@@ -99,6 +99,7 @@ public class Eth2Runner extends Runner {
   public Eth2Runner(
       final BaseConfig baseConfig,
       final SlashingProtectionParameters slashingProtectionParameters,
+      final Optional<Bytes32> genesisValidatorsRoot,
       final AzureKeyVaultParameters azureKeyVaultParameters,
       final KeystoresParameters keystoresParameters,
       final AwsVaultParameters awsVaultParameters,
@@ -108,7 +109,8 @@ public class Eth2Runner extends Runner {
       final boolean signingExtEnabled,
       final KeystoresParameters commitBoostApiParameters) {
     super(baseConfig);
-    this.slashingProtectionContext = createSlashingProtection(slashingProtectionParameters);
+    this.slashingProtectionContext =
+        createSlashingProtection(slashingProtectionParameters, genesisValidatorsRoot);
     this.azureKeyVaultParameters = azureKeyVaultParameters;
     this.slashingProtectionParameters = slashingProtectionParameters;
     this.pruningEnabled = slashingProtectionParameters.isPruningEnabled();
@@ -122,10 +124,21 @@ public class Eth2Runner extends Runner {
   }
 
   private Optional<SlashingProtectionContext> createSlashingProtection(
-      final SlashingProtectionParameters slashingProtectionParameters) {
+      final SlashingProtectionParameters slashingProtectionParameters,
+      final Optional<Bytes32> genesisValidatorsRoot) {
     if (slashingProtectionParameters.isEnabled()) {
       try {
-        return Optional.of(SlashingProtectionContextFactory.create(slashingProtectionParameters));
+        final SlashingProtectionContext context =
+            SlashingProtectionContextFactory.create(slashingProtectionParameters);
+        if (genesisValidatorsRoot.isPresent()) {
+          context
+              .getSlashingProtection()
+              .initialiseGenesisValidatorsRoot(genesisValidatorsRoot.get());
+        } else if (!context.getSlashingProtection().hasGenesisValidatorsRoot()) {
+          LOG.warn(
+              "Genesis validators root of the configured network cannot be determined at startup and none is stored in the slashing protection database. It will be set by the first signing request. Use --genesis-state to set it at startup.");
+        }
+        return Optional.of(context);
       } catch (final IllegalStateException e) {
         throw new InitializationException(e.getMessage(), e);
       }

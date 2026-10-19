@@ -76,6 +76,7 @@ public class SignerConfigurationBuilder {
   private Long fuluForkEpoch = null;
   private Long gloasForkEpoch = null;
   private String network = null;
+  private String genesisState = null;
   private boolean keyManagerApiEnabled = false;
   private KeystoresParameters keystoresParameters;
   private WatermarkRepairParameters watermarkRepairParameters;
@@ -296,6 +297,11 @@ public class SignerConfigurationBuilder {
     return this;
   }
 
+  public SignerConfigurationBuilder withGenesisState(final String genesisState) {
+    this.genesisState = genesisState;
+    return this;
+  }
+
   public SignerConfigurationBuilder withKeyManagerApiEnabled(final boolean keyManagerApiEnabled) {
     this.keyManagerApiEnabled = keyManagerApiEnabled;
     return this;
@@ -390,6 +396,7 @@ public class SignerConfigurationBuilder {
         Optional.ofNullable(fuluForkEpoch),
         Optional.ofNullable(gloasForkEpoch),
         Optional.ofNullable(network),
+        Optional.ofNullable(genesisState),
         keyManagerApiEnabled,
         Optional.ofNullable(watermarkRepairParameters),
         downstreamHttpPort,

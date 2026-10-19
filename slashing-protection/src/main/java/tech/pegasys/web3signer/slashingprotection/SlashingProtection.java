@@ -38,6 +38,17 @@ public interface SlashingProtection {
 
   boolean hasSlashingProtectionDataFor(Bytes publicKey);
 
+  /**
+   * Stores the genesis validators root if the slashing protection database has none; throws
+   * IllegalStateException if the database holds a different one.
+   *
+   * @param genesisValidatorsRoot the genesis validators root of the configured network
+   */
+  void initialiseGenesisValidatorsRoot(Bytes32 genesisValidatorsRoot);
+
+  /** Whether the slashing protection database already holds a genesis validators root. */
+  boolean hasGenesisValidatorsRoot();
+
   void exportData(OutputStream output);
 
   void exportDataWithFilter(OutputStream output, List<String> pubkeys);

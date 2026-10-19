@@ -68,8 +68,9 @@ import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 
 public class Eth2RequestUtils {
+  // mainnet GVR: must match the GVR web3signer sets at startup for the default --network mainnet
   public static final String GENESIS_VALIDATORS_ROOT =
-      "0x04700007fabc8282644aed6d1c7c9e21d38a03a0c4ba193f3afe428824b3a673";
+      "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95";
 
   private static final String PUBLIC_KEY =
       "0x8f82597c919c056571a05dfe83e6a7d32acf9ad8931be04d11384e95468cd68b40129864ae12745f774654bbac09b057";
