@@ -138,7 +138,7 @@ allprojects {
       // Apply the header matching each file's existing owner; files with no recognised header get the
       // current one.
       licenseHeaderFile("${rootDir}/gradle/spotless.java.former.license").named("former").onlyIfContentMatches("^/\\*\\r?\\n \\* Copyright \\d{4} ConsenSys AG\\.")
-      licenseHeaderFile("${rootDir}/gradle/spotless.java.current.license").named("current").onlyIfContentMatches("^(?!/\\*\\r?\\n \\* Copyright \\d{4} (ConsenSys AG|Consensys Incorporated)\\.)")
+      licenseHeaderFile("${rootDir}/gradle/spotless.java.current.license").named("current").onlyIfContentMatches("^(?!/\\*\\r?\\n \\* Copyright \\d{4} ConsenSys AG\\.)")
       // One-shot migration: stamp every file with the current owner, replacing any existing header.
       // Delete (or comment out) the two steps above and uncomment the line below. Existing years are
       // kept as-is, only the owner changes.
