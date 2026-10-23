@@ -69,7 +69,9 @@ public class TestSlashingProtectionParameters implements SlashingProtectionParam
         pruningInterval,
         3000,
         3000,
-        true);
+        // pooling off: tests share one Postgres cluster per JVM, so the connections a Hikari pool
+        // keeps alive would accumulate across tests until the server's max_connections is reached
+        false);
   }
 
   public TestSlashingProtectionParameters(

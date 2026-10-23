@@ -13,7 +13,6 @@
 package db;
 
 import db.DatabaseUtil.TestDatabaseInfo;
-import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -38,9 +37,9 @@ public class DatabaseSetupExtension
   }
 
   @Override
-  public void afterEach(final ExtensionContext context) throws Exception {
+  public void afterEach(final ExtensionContext context) {
     final TestDbContext dbContext = getDbContext(context);
-    dbContext.db().close();
+    // only the per-test handle is closed: the cluster is shared by every test of the JVM
     dbContext.handle().close();
   }
 
@@ -49,9 +48,7 @@ public class DatabaseSetupExtension
       final ParameterContext parameterContext, final ExtensionContext extensionContext)
       throws ParameterResolutionException {
     final Class<?> type = parameterContext.getParameter().getType();
-    return type.equals(Handle.class)
-        || type.equals(Jdbi.class)
-        || type.equals(EmbeddedPostgres.class);
+    return type.equals(Handle.class) || type.equals(Jdbi.class);
   }
 
   @Override
@@ -64,8 +61,6 @@ public class DatabaseSetupExtension
       return dbContext.handle();
     } else if (type.equals(Jdbi.class)) {
       return dbContext.jdbi();
-    } else if (type.equals(EmbeddedPostgres.class)) {
-      return dbContext.db();
     } else {
       throw new RuntimeException("Unknown parameter type " + type);
     }
@@ -79,11 +74,10 @@ public class DatabaseSetupExtension
       final ExtensionContext context,
       final TestDatabaseInfo testDatabaseInfo,
       final Handle handle) {
-    final TestDbContext dbContext =
-        new TestDbContext(testDatabaseInfo.getDb(), testDatabaseInfo.getJdbi(), handle);
+    final TestDbContext dbContext = new TestDbContext(testDatabaseInfo.getJdbi(), handle);
     final Store store = context.getStore(Namespace.GLOBAL);
     store.put(DB_CONTEXT_KEY, dbContext);
   }
 
-  private record TestDbContext(EmbeddedPostgres db, Jdbi jdbi, Handle handle) {}
+  private record TestDbContext(Jdbi jdbi, Handle handle) {}
 }

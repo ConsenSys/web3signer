@@ -16,12 +16,14 @@ import static tech.pegasys.web3signer.signing.KeyType.BLS;
 
 import tech.pegasys.web3signer.dsl.signer.Signer;
 import tech.pegasys.web3signer.dsl.signer.SignerConfiguration;
+import tech.pegasys.web3signer.dsl.utils.DatabaseUtil;
 import tech.pegasys.web3signer.signing.KeyType;
 
 import java.security.SecureRandom;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
 public class AcceptanceTestBase {
   protected static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -42,12 +44,19 @@ public class AcceptanceTestBase {
     signer.awaitStartupCompletion();
   }
 
+  @BeforeEach
+  protected void resetSlashingProtectionDatabase() {
+    // the embedded Postgres cluster is shared by the JVM, but each test gets its own database
+    DatabaseUtil.reset();
+  }
+
   @AfterEach
   protected void cleanup() {
     if (signer != null) {
       signer.shutdown();
       signer = null;
     }
+    DatabaseUtil.reset();
   }
 
   public static String calculateMode(final KeyType keyType) {

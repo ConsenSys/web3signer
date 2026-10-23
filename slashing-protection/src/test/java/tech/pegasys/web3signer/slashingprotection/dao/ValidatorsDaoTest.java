@@ -120,7 +120,7 @@ public class ValidatorsDaoTest {
       final Flyway flywayBeforeValidatorEnableFlag =
           Flyway.configure()
               .locations(MIGRATIONS_LOCATION)
-              .dataSource(testDatabaseInfo.getDb().getPostgresDatabase())
+              .dataSource(testDatabaseInfo.getDataSource())
               .target(versionBeforeEnableFlag)
               .load();
       flywayBeforeValidatorEnableFlag.migrate();
@@ -130,7 +130,7 @@ public class ValidatorsDaoTest {
       final Flyway flywayLatest =
           Flyway.configure()
               .locations(MIGRATIONS_LOCATION)
-              .dataSource(testDatabaseInfo.getDb().getPostgresDatabase())
+              .dataSource(testDatabaseInfo.getDataSource())
               .load();
       flywayLatest.migrate();
       assertThat(new ValidatorsDao().isEnabled(handle, 1)).isTrue();

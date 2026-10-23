@@ -26,8 +26,6 @@ import tech.pegasys.web3signer.slashingprotection.dao.SigningWatermark;
 import tech.pegasys.web3signer.slashingprotection.dao.ValidatorsDao;
 import tech.pegasys.web3signer.slashingprotection.interchange.InterchangeJsonProvider;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,12 +33,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import db.DatabaseUtil;
 import db.DatabaseUtil.TestDatabaseInfo;
 import dsl.TestSlashingProtectionParameters;
-import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.units.bigints.UInt64;
 import org.jdbi.v3.core.Jdbi;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 public class IntegrationTestBase {
@@ -52,7 +48,6 @@ public class IntegrationTestBase {
   protected final SignedBlocksDao signedBlocksDao = new SignedBlocksDao();
   protected final SignedAttestationsDao signedAttestationsDao = new SignedAttestationsDao();
 
-  protected EmbeddedPostgres db;
   protected String databaseUrl;
   protected Jdbi jdbi;
   protected SlashingProtectionContext slashingProtectionContext;
@@ -68,22 +63,9 @@ public class IntegrationTestBase {
         new TestSlashingProtectionParameters(testDatabaseInfo.databaseUrl(), USERNAME, PASSWORD);
     slashingProtectionContext =
         SlashingProtectionContextFactory.create(slashingProtectionParameters);
-    db = testDatabaseInfo.getDb();
     jdbi = testDatabaseInfo.getJdbi();
     databaseUrl = testDatabaseInfo.databaseUrl();
     insertGvr(GVR);
-  }
-
-  @AfterEach()
-  public void cleanup() {
-    if (db != null) {
-      try {
-        db.close();
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      }
-      db = null;
-    }
   }
 
   protected List<SignedAttestation> findAllAttestations() {

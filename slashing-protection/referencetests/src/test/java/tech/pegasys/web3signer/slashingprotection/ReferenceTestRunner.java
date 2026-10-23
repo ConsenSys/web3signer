@@ -41,7 +41,6 @@ import db.DatabaseUtil;
 import db.DatabaseUtil.TestDatabaseInfo;
 import dsl.SignedArtifacts;
 import dsl.TestSlashingProtectionParameters;
-import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes;
@@ -62,7 +61,6 @@ public class ReferenceTestRunner {
   private static final ObjectMapper OBJECT_MAPPER = new InterchangeJsonProvider().getJsonMapper();
   private final ValidatorsDao validators = new ValidatorsDao();
 
-  private EmbeddedPostgres slashingDatabase;
   private SlashingProtectionContext slashingProtectionContext;
   private Jdbi jdbi;
 
@@ -72,16 +70,7 @@ public class ReferenceTestRunner {
         new TestSlashingProtectionParameters(testDatabaseInfo.databaseUrl(), USERNAME, PASSWORD);
     slashingProtectionContext =
         SlashingProtectionContextFactory.create(slashingProtectionParameters);
-    slashingDatabase = testDatabaseInfo.getDb();
     jdbi = testDatabaseInfo.getJdbi();
-  }
-
-  public void cleanup() {
-    try {
-      slashingDatabase.close();
-    } catch (final IOException e) {
-      LOG.error("Failed to close database", e);
-    }
   }
 
   @TestFactory
@@ -114,39 +103,35 @@ public class ReferenceTestRunner {
 
   private void executeFile(final TestFileModel model) throws IOException {
     setup();
-    try {
-      for (final Step step : model.getSteps()) {
-        final String interchangeContent =
-            OBJECT_MAPPER.writeValueAsString(step.getInterchangeContent());
+    for (final Step step : model.getSteps()) {
+      final String interchangeContent =
+          OBJECT_MAPPER.writeValueAsString(step.getInterchangeContent());
 
-        final Bytes32 gvr = Bytes32.fromHexString(model.getGenesisValidatorsRoot());
+      final Bytes32 gvr = Bytes32.fromHexString(model.getGenesisValidatorsRoot());
 
-        jdbi.useHandle(
-            h -> {
-              final MetadataDao metadataDao = new MetadataDao();
-              if (metadataDao.findGenesisValidatorsRoot(h).isEmpty()) {
-                metadataDao.insertGenesisValidatorsRoot(h, gvr);
-              }
-            });
+      jdbi.useHandle(
+          h -> {
+            final MetadataDao metadataDao = new MetadataDao();
+            if (metadataDao.findGenesisValidatorsRoot(h).isEmpty()) {
+              metadataDao.insertGenesisValidatorsRoot(h, gvr);
+            }
+          });
 
-        // web3signer doesn't allow for partial imports, so - if it is expected, then
-        // expect import to throw.
-        if (step.isShouldSucceed()) {
-          slashingProtectionContext
-              .getSlashingProtection()
-              .importData(new ByteArrayInputStream(interchangeContent.getBytes(UTF_8)));
-          verifyImport(step, gvr);
-        } else {
-          assertThatThrownBy(
-                  () ->
-                      slashingProtectionContext
-                          .getSlashingProtection()
-                          .importData(new ByteArrayInputStream(interchangeContent.getBytes(UTF_8))))
-              .isInstanceOf(RuntimeException.class);
-        }
+      // web3signer doesn't allow for partial imports, so - if it is expected, then
+      // expect import to throw.
+      if (step.isShouldSucceed()) {
+        slashingProtectionContext
+            .getSlashingProtection()
+            .importData(new ByteArrayInputStream(interchangeContent.getBytes(UTF_8)));
+        verifyImport(step, gvr);
+      } else {
+        assertThatThrownBy(
+                () ->
+                    slashingProtectionContext
+                        .getSlashingProtection()
+                        .importData(new ByteArrayInputStream(interchangeContent.getBytes(UTF_8))))
+            .isInstanceOf(RuntimeException.class);
       }
-    } finally {
-      cleanup();
     }
   }
 

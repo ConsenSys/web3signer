@@ -49,6 +49,7 @@
 - `POST /reload` responses now use the shared `{"code": <status>, "message": "..."}` body: `202` returns `"code": 202` instead of `"status": "accepted"`, and `409` returns `"code": 409` instead of `"status": "error"`. `GET /reload` is unchanged. [#1235][PR_1235]
 
 ### CI/Build Enhancements
+- Postgres-backed tests share one embedded Postgres cluster per test JVM and get a fresh database per test instead of a cluster per test, removing the embedded-Postgres startup and macOS shared-memory flakes. [#1242][PR_1242]
 - Azure Key Vault acceptance tests now run against local Azure emulator instance instead of live Azure.
 - OWASP dependency-check runs nightly again, scanning only the dependencies shipped in the distribution (`runtimeClasspath`) and publishing findings to GitHub code scanning. The NVD database is cached between runs and rebuilt weekly; the run fails if the NVD data is more than 48 hours old. Stale suppressions were removed and current false positives documented. [#1237][PR_1237]
 
@@ -63,6 +64,7 @@
 [PR_1192]: https://github.com/Consensys-Incorporated/web3signer/pull/1192
 [PR_1235]: https://github.com/Consensys-Incorporated/web3signer/pull/1235
 [PR_1237]: https://github.com/Consensys-Incorporated/web3signer/pull/1237
+[PR_1242]: https://github.com/Consensys-Incorporated/web3signer/pull/1242
 [PR_1240]: https://github.com/Consensys-Incorporated/web3signer/pull/1240
 [PR_1257]: https://github.com/Consensys-Incorporated/web3signer/pull/1257
 
