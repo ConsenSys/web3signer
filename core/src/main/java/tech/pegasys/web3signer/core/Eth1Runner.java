@@ -23,9 +23,7 @@ import tech.pegasys.web3signer.core.routes.ReloadRoute;
 import tech.pegasys.web3signer.core.routes.eth1.Eth1SignRoute;
 import tech.pegasys.web3signer.core.routes.eth1.JsonRpcRoute;
 import tech.pegasys.web3signer.keystorage.azure.AzureKeyVault;
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
-import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.EthSecpArtifactSigner;
 import tech.pegasys.web3signer.signing.bulkloading.SecpAwsBulkLoader;
@@ -37,6 +35,7 @@ import tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.config.KeystoresParameters;
 import tech.pegasys.web3signer.signing.config.SecpArtifactSignerProviderAdapter;
 import tech.pegasys.web3signer.signing.config.SignerLoader;
+import tech.pegasys.web3signer.signing.config.SignerSourceResult;
 import tech.pegasys.web3signer.signing.config.metadata.Secp256k1ArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.parser.SignerParser;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlMapperFactory;
@@ -45,7 +44,7 @@ import tech.pegasys.web3signer.signing.secp256k1.aws.AwsKmsSignerFactory;
 import tech.pegasys.web3signer.signing.secp256k1.aws.CachedAwsKmsClientFactory;
 import tech.pegasys.web3signer.signing.secp256k1.azure.AzureKeyVaultSignerFactory;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -106,17 +105,18 @@ public class Eth1Runner extends Runner {
         new DefaultArtifactSignerProvider(
             () -> {
               // Supplier reuses the same factory instances on every reload
-              final MappedResults<ArtifactSigner> configFileResults =
+              final List<SignerSourceResult> results = new ArrayList<>();
+              results.add(
                   loadSignersFromKeyConfigFiles(
-                      azureKeyVaultFactory, azureSignerFactory, awsKmsSignerFactory, signerLoader);
-              final MappedResults<ArtifactSigner> bulkLoadResults =
+                      azureKeyVaultFactory, azureSignerFactory, awsKmsSignerFactory, signerLoader));
+              results.addAll(
                   bulkLoadSigners(
                       azureKeyVaultFactory,
                       azureSignerFactory,
                       cachedAwsKmsClientFactory,
-                      awsKmsSignerFactory);
+                      awsKmsSignerFactory));
 
-              return MappedResults.merge(configFileResults, bulkLoadResults);
+              return results;
             },
             Optional.empty(),
             Optional.empty());
@@ -129,7 +129,7 @@ public class Eth1Runner extends Runner {
     return List.of(signerProvider, secpArtifactSignerProvider);
   }
 
-  private MappedResults<ArtifactSigner> loadSignersFromKeyConfigFiles(
+  private SignerSourceResult loadSignersFromKeyConfigFiles(
       final AzureKeyVaultFactory azureKeyVaultFactory,
       final AzureKeyVaultSignerFactory azureSignerFactory,
       final AwsKmsSignerFactory awsKmsSignerFactory,
@@ -155,29 +155,28 @@ public class Eth1Runner extends Runner {
     }
   }
 
-  private MappedResults<ArtifactSigner> bulkLoadSigners(
+  private List<SignerSourceResult> bulkLoadSigners(
       final AzureKeyVaultFactory azureKeyVaultFactory,
       final AzureKeyVaultSignerFactory azureSignerFactory,
       final CachedAwsKmsClientFactory cachedAwsKmsClientFactory,
       final AwsKmsSignerFactory awsKmsSignerFactory) {
-    MappedResults<ArtifactSigner> results = MappedResults.newSetInstance();
+    final List<SignerSourceResult> results = new ArrayList<>();
     if (eth1Config.getAzureKeyVaultConfig().isAzureKeyVaultEnabled()) {
-      results =
-          MappedResults.merge(results, bulkLoadAzureKeys(azureKeyVaultFactory, azureSignerFactory));
+      results.add(bulkLoadAzureKeys(azureKeyVaultFactory, azureSignerFactory));
     }
     if (eth1Config.getAwsVaultParameters().isEnabled()) {
-      results =
-          MappedResults.merge(
-              results, bulkLoadAwsKeys(cachedAwsKmsClientFactory, awsKmsSignerFactory));
+      results.add(bulkLoadAwsKeys(cachedAwsKmsClientFactory, awsKmsSignerFactory));
     }
 
     // v3 bulk loading
-    results = MappedResults.merge(results, bulkloadV3Keystores());
+    if (eth1Config.getV3KeystoresBulkLoadParameters().isEnabled()) {
+      results.add(bulkloadV3Keystores());
+    }
 
     return results;
   }
 
-  private MappedResults<ArtifactSigner> bulkLoadAzureKeys(
+  private SignerSourceResult bulkLoadAzureKeys(
       AzureKeyVaultFactory azureKeyVaultFactory, AzureKeyVaultSignerFactory azureSignerFactory) {
     LOG.info("Bulk loading keys from Azure key vault ... ");
     final AzureKeyVaultParameters azureKeyVaultConfig = eth1Config.getAzureKeyVaultConfig();
@@ -192,39 +191,39 @@ public class Eth1Runner extends Runner {
             azureKeyVaultConfig.getAzureOverrides());
     final SecpAzureBulkLoader secpAzureBulkLoader =
         new SecpAzureBulkLoader(azureKeyVault, azureSignerFactory);
-    final MappedResults<ArtifactSigner> azureResult = secpAzureBulkLoader.load(azureKeyVaultConfig);
+    final SignerSourceResult azureResult =
+        SignerSourceResult.fromVault(
+            "Azure key vault", secpAzureBulkLoader.load(azureKeyVaultConfig));
     LOG.info(
         "Keys loaded from Azure: [{}], with error count: [{}]",
-        azureResult.getValues().size(),
-        azureResult.getErrorCount());
+        azureResult.signers().size(),
+        azureResult.errorCount());
     registerSignerLoadingHealthCheck(KEYS_CHECK_AZURE_BULK_LOADING, azureResult);
     return azureResult;
   }
 
-  private MappedResults<ArtifactSigner> bulkLoadAwsKeys(
+  private SignerSourceResult bulkLoadAwsKeys(
       CachedAwsKmsClientFactory cachedAwsKmsClientFactory,
       AwsKmsSignerFactory awsKmsSignerFactory) {
     LOG.info("Bulk loading keys from AWS KMS key vault ... ");
     final SecpAwsBulkLoader secpAwsBulkLoader =
         new SecpAwsBulkLoader(cachedAwsKmsClientFactory, awsKmsSignerFactory);
-    final MappedResults<ArtifactSigner> awsResult =
-        secpAwsBulkLoader.load(eth1Config.getAwsVaultParameters());
+    final SignerSourceResult awsResult =
+        SignerSourceResult.fromVault(
+            "AWS KMS", secpAwsBulkLoader.load(eth1Config.getAwsVaultParameters()));
     LOG.info(
         "Keys loaded from AWS: [{}], with error count: [{}]",
-        awsResult.getValues().size(),
-        awsResult.getErrorCount());
+        awsResult.signers().size(),
+        awsResult.errorCount());
     registerSignerLoadingHealthCheck(KEYS_CHECK_AWS_BULK_LOADING, awsResult);
     return awsResult;
   }
 
-  private MappedResults<ArtifactSigner> bulkloadV3Keystores() {
+  private SignerSourceResult bulkloadV3Keystores() {
     final KeystoresParameters v3WalletBLParams = eth1Config.getV3KeystoresBulkLoadParameters();
-    if (!v3WalletBLParams.isEnabled()) {
-      return MappedResults.newInstance(Collections.emptyList(), 0);
-    }
 
     LOG.info("Bulk loading v3 keystore files ... ");
-    final MappedResults<ArtifactSigner> walletResults =
+    final SignerSourceResult walletResults =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
             v3WalletBLParams.getKeystoresPath(),
             v3WalletBLParams.hasKeystoresPasswordFile()
@@ -232,23 +231,22 @@ public class Eth1Runner extends Runner {
                 : v3WalletBLParams.getKeystoresPasswordsPath());
     LOG.info(
         "Keys loaded from v3 keystores files: [{}], with error count: [{}]",
-        walletResults.getValues().size(),
-        walletResults.getErrorCount());
+        walletResults.signers().size(),
+        walletResults.errorCount());
     registerSignerLoadingHealthCheck(KEYS_CHECK_V3_KEYSTORES_BULK_LOADING, walletResults);
     return walletResults;
   }
 
   private void registerSignerLoadingHealthCheck(
-      final String name, final MappedResults<ArtifactSigner> result) {
+      final String name, final SignerSourceResult result) {
     super.registerHealthCheckProcedure(
         name,
         promise -> {
           final JsonObject statusJson =
               new JsonObject()
-                  .put("keys-loaded", result.getValues().size())
-                  .put("error-count", result.getErrorCount());
-          promise.complete(
-              result.getErrorCount() > 0 ? Status.KO(statusJson) : Status.OK(statusJson));
+                  .put("keys-loaded", result.signers().size())
+                  .put("error-count", result.errorCount());
+          promise.complete(result.errorCount() > 0 ? Status.KO(statusJson) : Status.OK(statusJson));
         });
   }
 }

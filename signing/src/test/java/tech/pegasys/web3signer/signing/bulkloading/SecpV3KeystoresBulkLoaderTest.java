@@ -14,12 +14,12 @@ package tech.pegasys.web3signer.signing.bulkloading;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
-import tech.pegasys.web3signer.signing.ArtifactSigner;
+import tech.pegasys.web3signer.signing.config.SignerSourceResult;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -49,11 +49,21 @@ public class SecpV3KeystoresBulkLoaderTest {
 
   @Test
   void loadSecpV3KeystoresWithPasswordFilesFromDir() {
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
 
-    assertThat(results.getValues()).hasSize(4);
-    assertThat(results.getErrorCount()).isZero();
+    assertThat(results.artifactSigners()).hasSize(4);
+    assertThat(results.errorCount()).isZero();
+    assertThat(results.failedFiles()).isEmpty();
+    assertThat(results.sourceFailed()).isFalse();
+
+    // each signer names the keystore file it was loaded from
+    assertThat(results.signers())
+        .allSatisfy(
+            loaded ->
+                assertThat(loaded.file())
+                    .hasValueSatisfying(
+                        file -> assertThat(file).startsWith(keystoreDir.toString())));
   }
 
   @Test
@@ -63,11 +73,11 @@ public class SecpV3KeystoresBulkLoaderTest {
       passwordFile = passwordFiles.findAny().orElseThrow();
     }
 
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordFile);
 
-    assertThat(results.getValues()).hasSize(4);
-    assertThat(results.getErrorCount()).isZero();
+    assertThat(results.artifactSigners()).hasSize(4);
+    assertThat(results.errorCount()).isZero();
   }
 
   @Test
@@ -77,11 +87,11 @@ public class SecpV3KeystoresBulkLoaderTest {
       passwordFile = passwordFiles.findAny().orElseThrow();
     }
 
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(emptyDir, passwordFile);
 
-    assertThat(results.getValues()).isEmpty();
-    assertThat(results.getErrorCount()).isZero();
+    assertThat(results.artifactSigners()).isEmpty();
+    assertThat(results.errorCount()).isZero();
   }
 
   @Test
@@ -95,33 +105,38 @@ public class SecpV3KeystoresBulkLoaderTest {
       passwordFile = passwordFiles.findAny().orElseThrow();
     }
 
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordFile);
 
-    assertThat(results.getValues()).hasSize(4);
-    assertThat(results.getErrorCount()).isEqualTo(4);
+    assertThat(results.artifactSigners()).hasSize(4);
+    assertThat(results.errorCount()).isEqualTo(4);
+    assertThat(results.failedFiles()).hasSize(4);
+    assertThat(results.sourceFailed()).isFalse();
   }
 
   @Test
   void errorResultsWhenPasswordIsInvalid() throws IOException {
-    Path passwordFile = Files.writeString(passwordDir.resolve("password.txt"), "invalid");
+    final Path passwordFile = Files.writeString(passwordDir.resolve("password.txt"), "invalid");
 
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordFile);
 
-    assertThat(results.getValues()).isEmpty();
-    assertThat(results.getErrorCount()).isEqualTo(4);
+    assertThat(results.artifactSigners()).isEmpty();
+    assertThat(results.errorCount()).isEqualTo(4);
+    assertThat(results.failedFiles()).hasSize(4);
+    assertThat(results.sourceFailed()).isFalse();
   }
 
   @Test
   void errorResultsWhenPasswordFileIsMissing() {
-    Path passwordFile = passwordDir.resolve("password.txt");
+    final Path passwordFile = passwordDir.resolve("password.txt");
 
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordFile);
 
-    assertThat(results.getValues()).isEmpty();
-    assertThat(results.getErrorCount()).isEqualTo(1);
+    assertThat(results.artifactSigners()).isEmpty();
+    assertThat(results.errorCount()).isEqualTo(1);
+    assertThat(results.sourceFailed()).isTrue();
   }
 
   @Test
@@ -131,30 +146,100 @@ public class SecpV3KeystoresBulkLoaderTest {
       Files.delete(passwordFiles.findAny().orElseThrow());
     }
 
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
 
-    assertThat(results.getValues()).hasSize(3);
-    assertThat(results.getErrorCount()).isEqualTo(1);
+    assertThat(results.artifactSigners()).hasSize(3);
+    assertThat(results.errorCount()).isEqualTo(1);
+    assertThat(results.failedFiles())
+        .hasSize(1)
+        .allSatisfy(file -> assertThat(file).endsWith(".json"));
   }
 
   @Test
   void errorResultsWhenPasswordDirIsEmpty(@TempDir Path emptyPasswordDir) {
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
             keystoreDir, emptyPasswordDir);
 
-    assertThat(results.getValues()).isEmpty();
-    assertThat(results.getErrorCount()).isEqualTo(4);
+    assertThat(results.artifactSigners()).isEmpty();
+    assertThat(results.errorCount()).isEqualTo(4);
+    assertThat(results.sourceFailed()).isFalse();
   }
 
   @Test
   void errorResultsWhenPasswordDirIsMissing() {
-    final MappedResults<ArtifactSigner> results =
+    final SignerSourceResult results =
         SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
             keystoreDir, passwordDir.resolve("/invalid"));
 
-    assertThat(results.getValues()).isEmpty();
-    assertThat(results.getErrorCount()).isEqualTo(1);
+    assertThat(results.artifactSigners()).isEmpty();
+    assertThat(results.errorCount()).isEqualTo(1);
+    assertThat(results.sourceFailed()).isTrue();
+  }
+
+  @Test
+  void unreadablePasswordFileReportsSourceFailure() throws IOException {
+    final Path passwordFile = Files.writeString(passwordDir.resolve("password.txt"), "test123");
+    assertThat(
+            SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
+                    keystoreDir, passwordFile)
+                .artifactSigners())
+        .hasSize(4);
+
+    Files.delete(passwordFile);
+    final SignerSourceResult errored =
+        SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordFile);
+    assertThat(errored.artifactSigners()).isEmpty();
+    assertThat(errored.errorCount()).isEqualTo(1);
+    assertThat(errored.sourceFailed()).isTrue();
+
+    Files.writeString(passwordFile, "test123");
+    Files.delete(keystoreFiles().get(0));
+    final SignerSourceResult recovered =
+        SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordFile);
+    assertThat(recovered.artifactSigners()).hasSize(3);
+    assertThat(recovered.errorCount()).isZero();
+  }
+
+  @Test
+  void failingKeystoreIsReportedAsFailedFileWhileDeletedKeystoreIsDropped() throws IOException {
+    assertThat(
+            SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(
+                    keystoreDir, passwordDir)
+                .artifactSigners())
+        .hasSize(4);
+
+    final List<Path> keystores = keystoreFiles();
+    final Path corrupted = keystores.get(0);
+    final Path deleted = keystores.get(1);
+    Files.writeString(corrupted, "invalid content");
+
+    final SignerSourceResult errored =
+        SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
+    assertThat(errored.artifactSigners()).hasSize(3);
+    assertThat(errored.errorCount()).isEqualTo(1);
+    assertThat(errored.failedFiles()).containsExactly(corrupted.toString());
+    assertThat(errored.sourceFailed()).isFalse();
+
+    // deleting another keystore drops its signer: only the failed file is named
+    Files.delete(deleted);
+    final SignerSourceResult afterDelete =
+        SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
+    assertThat(afterDelete.artifactSigners()).hasSize(2);
+    assertThat(afterDelete.errorCount()).isEqualTo(1);
+    assertThat(afterDelete.failedFiles()).containsExactly(corrupted.toString());
+
+    Files.delete(corrupted);
+    final SignerSourceResult recovered =
+        SecpV3KeystoresBulkLoader.loadV3KeystoresUsingPasswordFileOrDir(keystoreDir, passwordDir);
+    assertThat(recovered.artifactSigners()).hasSize(2);
+    assertThat(recovered.errorCount()).isZero();
+  }
+
+  private List<Path> keystoreFiles() throws IOException {
+    try (Stream<Path> files = Files.list(keystoreDir)) {
+      return files.filter(path -> path.toString().endsWith(".json")).sorted().toList();
+    }
   }
 }

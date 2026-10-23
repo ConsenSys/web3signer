@@ -17,14 +17,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.BLSTestUtil;
 import tech.pegasys.web3signer.KeystoreUtil;
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
+import tech.pegasys.web3signer.signing.config.SignerSourceResult;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,30 +35,38 @@ class BlsKeystoreBulkLoaderTest {
   private static final BLSKeyPair KEY_PAIR_2 = BLSTestUtil.randomKeyPair(1);
   private static final String KEYSTORE_PASSWORD_1 = "password1";
   private static final String KEYSTORE_PASSWORD_2 = "password2";
-  private final BlsKeystoreBulkLoader loader = new BlsKeystoreBulkLoader();
 
   @Test
   void loadingEmptyKeystoreDirReturnsNoSigners(
       final @TempDir Path keystoreDir, final @TempDir Path passwordDir) {
-    MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isEqualTo(0);
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(result.signers()).isEmpty();
+    assertThat(result.errorCount()).isZero();
+    assertThat(result.failedFiles()).isEmpty();
+    assertThat(result.sourceFailed()).isFalse();
   }
 
   @Test
   void loadsMultipleKeystores(final @TempDir Path keystoreDir, final @TempDir Path passwordDir) {
     KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, "password1");
     KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
-    final Collection<ArtifactSigner> signers = result.getValues();
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    final Collection<ArtifactSigner> signers = result.artifactSigners();
 
     assertThat(signers).hasSize(2);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_1);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_2);
+    assertThat(result.errorCount()).isZero();
 
-    assertThat(result.getErrorCount()).isEqualTo(0);
+    // each signer names the keystore file it was loaded from
+    assertThat(result.signers())
+        .allSatisfy(
+            loaded ->
+                assertThat(loaded.file())
+                    .contains(
+                        keystoreDir.resolve(loaded.signer().getIdentifier() + ".json").toString()));
   }
 
   @Test
@@ -70,14 +79,14 @@ class BlsKeystoreBulkLoaderTest {
     final Path passwordFile = tempDir.resolve("password.txt");
     Files.writeString(passwordFile, KEYSTORE_PASSWORD_1);
 
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
-    final Collection<ArtifactSigner> signers = result.getValues();
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
+    final Collection<ArtifactSigner> signers = result.artifactSigners();
     assertThat(signers).hasSize(2);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_1);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_2);
 
-    assertThat(result.getErrorCount()).isEqualTo(0);
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
@@ -91,13 +100,14 @@ class BlsKeystoreBulkLoaderTest {
     final Path targetPath = keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".ignored");
     Files.move(sourcePath, targetPath);
 
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
-    final Collection<ArtifactSigner> signers = result.getValues();
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    final Collection<ArtifactSigner> signers = result.artifactSigners();
     assertThat(signers).hasSize(1);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_2);
 
-    assertThat(result.getErrorCount()).isEqualTo(0);
+    assertThat(result.errorCount()).isZero();
+    assertThat(result.failedFiles()).isEmpty();
   }
 
   @Test
@@ -106,13 +116,16 @@ class BlsKeystoreBulkLoaderTest {
     KeystoreUtil.createKeystoreFile(KEY_PAIR_1, keystoreDir, KEYSTORE_PASSWORD_1);
     KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
 
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
-    final Collection<ArtifactSigner> signers = result.getValues();
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    final Collection<ArtifactSigner> signers = result.artifactSigners();
     assertThat(signers).hasSize(1);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_2);
 
-    assertThat(result.getErrorCount()).isEqualTo(1);
+    assertThat(result.errorCount()).isEqualTo(1);
+    assertThat(result.failedFiles())
+        .containsExactly(keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json").toString());
+    assertThat(result.sourceFailed()).isFalse();
   }
 
   @Test
@@ -122,36 +135,121 @@ class BlsKeystoreBulkLoaderTest {
     KeystoreUtil.createKeystorePasswordFile(KEY_PAIR_1, passwordDir, KEYSTORE_PASSWORD_1);
     KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
 
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
-    final Collection<ArtifactSigner> signers = result.getValues();
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    final Collection<ArtifactSigner> signers = result.artifactSigners();
     assertThat(signers).hasSize(1);
     assertThatSignerHasPublicKey(signers, KEY_PAIR_2);
 
-    assertThat(result.getErrorCount()).isEqualTo(1);
+    assertThat(result.errorCount()).isEqualTo(1);
+    assertThat(result.failedFiles())
+        .containsExactly(keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json").toString());
   }
 
   @Test
-  void invalidKeystoreDirectoryReturnsErrorCount(
+  void invalidKeystoreDirectoryReportsSourceFailure(
       final @TempDir Path keystoreDir, final @TempDir Path passwordDir) {
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordDir(
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(
             keystoreDir.resolve("invalidKeystorePath"), passwordDir);
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isEqualTo(1);
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.errorCount()).isEqualTo(1);
+    assertThat(result.sourceFailed()).isTrue();
   }
 
   @Test
-  void invalidKeystorePasswordFileReturnsErrorCount(final @TempDir Path tempDir)
+  void invalidKeystorePasswordFileReportsSourceFailure(final @TempDir Path tempDir)
       throws IOException {
     final Path keystoreDir = tempDir.resolve("keystores");
     Files.createDirectory(keystoreDir);
 
-    final MappedResults<ArtifactSigner> result =
-        loader.loadKeystoresUsingPasswordFile(
+    final SignerSourceResult result =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(
             keystoreDir, tempDir.resolve("invalidPasswordFilePath"));
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isEqualTo(1);
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.errorCount()).isEqualTo(1);
+    assertThat(result.sourceFailed()).isTrue();
+  }
+
+  @Test
+  void unreadablePasswordFileReportsSourceFailure(final @TempDir Path tempDir) throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    KeystoreUtil.createKeystoreFile(KEY_PAIR_1, keystoreDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystoreFile(KEY_PAIR_2, keystoreDir, KEYSTORE_PASSWORD_1);
+    final Path passwordFile =
+        Files.writeString(tempDir.resolve("password.txt"), KEYSTORE_PASSWORD_1);
+
+    assertThat(
+            BlsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile)
+                .artifactSigners())
+        .hasSize(2);
+
+    Files.delete(passwordFile);
+    final SignerSourceResult errored =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
+    assertThat(errored.artifactSigners()).isEmpty();
+    assertThat(errored.errorCount()).isEqualTo(1);
+    assertThat(errored.sourceFailed()).isTrue();
+
+    Files.writeString(passwordFile, KEYSTORE_PASSWORD_1);
+    Files.delete(keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json"));
+    final SignerSourceResult recovered =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(keystoreDir, passwordFile);
+    assertThat(recovered.artifactSigners()).hasSize(1);
+    assertThatSignerHasPublicKey(recovered.artifactSigners(), KEY_PAIR_2);
+    assertThat(recovered.errorCount()).isZero();
+  }
+
+  @Test
+  void failingKeystoreIsReportedAsFailedFileWhileDeletedKeystoreIsDropped(
+      final @TempDir Path keystoreDir, final @TempDir Path passwordDir) throws IOException {
+    KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    assertThat(
+            BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir)
+                .artifactSigners())
+        .hasSize(2);
+
+    final Path keystore1 = keystoreDir.resolve(KEY_PAIR_1.getPublicKey() + ".json");
+    Files.writeString(keystore1, "{}");
+    Files.delete(keystoreDir.resolve(KEY_PAIR_2.getPublicKey() + ".json"));
+    Files.delete(passwordDir.resolve(KEY_PAIR_2.getPublicKey() + ".txt"));
+
+    final SignerSourceResult errored =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    // the failed file is named, the deleted one is not: only the failed key is retained by the
+    // provider
+    assertThat(errored.artifactSigners()).isEmpty();
+    assertThat(errored.failedFiles()).containsExactly(keystore1.toString());
+    assertThat(errored.errorCount()).isEqualTo(1);
+    assertThat(errored.sourceFailed()).isFalse();
+
+    Files.delete(keystore1);
+    final SignerSourceResult recovered =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(recovered.artifactSigners()).isEmpty();
+    assertThat(recovered.errorCount()).isZero();
+  }
+
+  @Test
+  void missingKeystoreDirectoryReportsSourceFailure(final @TempDir Path tempDir)
+      throws IOException {
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    final Path passwordDir = Files.createDirectory(tempDir.resolve("passwords"));
+    KeystoreUtil.createKeystore(KEY_PAIR_1, keystoreDir, passwordDir, KEYSTORE_PASSWORD_1);
+    KeystoreUtil.createKeystore(KEY_PAIR_2, keystoreDir, passwordDir, KEYSTORE_PASSWORD_2);
+    assertThat(
+            BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir)
+                .artifactSigners())
+        .hasSize(2);
+
+    FileUtils.deleteDirectory(keystoreDir.toFile());
+
+    final SignerSourceResult errored =
+        BlsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(keystoreDir, passwordDir);
+    assertThat(errored.artifactSigners()).isEmpty();
+    assertThat(errored.errorCount()).isEqualTo(1);
+    assertThat(errored.sourceFailed()).isTrue();
   }
 
   private void assertThatSignerHasPublicKey(

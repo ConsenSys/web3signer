@@ -21,17 +21,22 @@ import static tech.pegasys.web3signer.signing.KeyType.BLS;
 
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.BLSTestUtil;
+import tech.pegasys.web3signer.KeystoreUtil;
 import tech.pegasys.web3signer.bls.keystore.model.KdfFunction;
 import tech.pegasys.web3signer.dsl.signer.SignerConfigurationBuilder;
+import tech.pegasys.web3signer.dsl.utils.DefaultKeystoresParameters;
 import tech.pegasys.web3signer.dsl.utils.MetadataFileHelpers;
 import tech.pegasys.web3signer.tests.signing.SigningAcceptanceTestBase;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 
 import io.restassured.http.ContentType;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class ReloadAcceptanceTest extends SigningAcceptanceTestBase {
   private static final MetadataFileHelpers METADATA_FILE_HELPERS = new MetadataFileHelpers();
@@ -516,5 +521,59 @@ public class ReloadAcceptanceTest extends SigningAcceptanceTestBase {
 
     // Verify no signers were loaded
     assertThat(signer.listPublicKeys(BLS)).isEmpty();
+  }
+
+  @Test
+  void reloadWithUnreadablePasswordFileKeepsKeysAndLaterReloadRemovesDeletedKeystore(
+      @TempDir final Path tempDir) throws IOException {
+    final BLSKeyPair keyPair1 = BLSTestUtil.randomKeyPair(1);
+    final BLSKeyPair keyPair2 = BLSTestUtil.randomKeyPair(2);
+    final Path keystoreDir = Files.createDirectory(tempDir.resolve("keystores"));
+    KeystoreUtil.createKeystoreFile(keyPair1, keystoreDir, "password1");
+    KeystoreUtil.createKeystoreFile(keyPair2, keystoreDir, "password1");
+    final Path passwordFile = Files.writeString(tempDir.resolve("password.txt"), "password1");
+
+    final SignerConfigurationBuilder builder = new SignerConfigurationBuilder();
+    builder
+        .withMode("eth2")
+        .withKeystoresParameters(new DefaultKeystoresParameters(keystoreDir, null, passwordFile));
+    startSigner(builder.build());
+
+    assertThat(signer.listPublicKeys(BLS)).hasSize(2);
+
+    // password file becomes unreadable: both keys are kept, the reload reports the error
+    Files.delete(passwordFile);
+    signer.callReload().then().statusCode(202);
+    Awaitility.await()
+        .atMost(10, TimeUnit.SECONDS)
+        .pollInterval(500, TimeUnit.MILLISECONDS)
+        .untilAsserted(
+            () ->
+                signer
+                    .getReloadStatus()
+                    .then()
+                    .statusCode(200)
+                    .body("status", equalTo("completed_with_errors"))
+                    .body("lastError", containsString("1 signer loading error")));
+    assertThat(signer.listPublicKeys(BLS))
+        .containsExactlyInAnyOrder(
+            keyPair1.getPublicKey().toHexString(), keyPair2.getPublicKey().toHexString());
+
+    // password file is restored and keystore 2 is deleted: only key 2 goes away
+    Files.writeString(passwordFile, "password1");
+    Files.delete(keystoreDir.resolve(keyPair2.getPublicKey() + ".json"));
+    signer.callReload().then().statusCode(202);
+    Awaitility.await()
+        .atMost(10, TimeUnit.SECONDS)
+        .pollInterval(500, TimeUnit.MILLISECONDS)
+        .untilAsserted(
+            () ->
+                signer
+                    .getReloadStatus()
+                    .then()
+                    .statusCode(200)
+                    .body("status", equalTo("completed"))
+                    .body("lastError", nullValue()));
+    assertThat(signer.listPublicKeys(BLS)).containsExactly(keyPair1.getPublicKey().toHexString());
   }
 }

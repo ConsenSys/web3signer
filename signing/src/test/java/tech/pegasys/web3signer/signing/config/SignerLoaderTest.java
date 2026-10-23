@@ -30,7 +30,6 @@ import tech.pegasys.web3signer.FileHiddenUtil;
 import tech.pegasys.web3signer.common.Web3SignerMetricCategory;
 import tech.pegasys.web3signer.common.config.SignerLoaderConfig;
 import tech.pegasys.web3signer.keystorage.aws.AwsSecretsManagerProvider;
-import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
@@ -44,6 +43,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -52,10 +52,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import org.apache.commons.io.FileUtils;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.hyperledger.besu.plugin.services.metrics.LabelledMetric;
 import org.hyperledger.besu.plugin.services.metrics.OperationTimer;
@@ -132,7 +135,7 @@ class SignerLoaderTest {
     createFileInConfigsDirectory(fileName, privateKeyHex);
 
     signerLoader.load(signerParser);
-    final Collection<ArtifactSigner> signerList = signerLoader.load(signerParser).getValues();
+    final Collection<ArtifactSigner> signerList = signerLoader.load(signerParser).artifactSigners();
 
     assertThat(signerList.size()).isOne();
     assertThat(signerList.stream().findFirst().orElseThrow().getIdentifier())
@@ -155,33 +158,33 @@ class SignerLoaderTest {
     final String privateKeyHex = blsKeyPair1.getSecretKey().toBytes().toHexString();
     createFileInConfigsDirectory(filename, privateKeyHex);
 
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
   void failedParserReturnsEmptySigner() throws IOException {
     createFileInConfigsDirectory(configFileName(blsKeyPair1), "NOT_A_VALID_KEY");
 
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isOne();
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.errorCount()).isOne();
   }
 
   @Test
-  void failedWithDirectoryErrorReturnEmptySigner() throws IOException {
+  void failedWithDirectoryErrorReturnsSourceFailure() throws IOException {
 
     final Path missingConfigDir = configsDirectory.resolve("idontexist");
     try (SignerLoader signerLoaderWithInvalidConfigDir =
         new SignerLoader(SignerLoaderConfig.withDefaults(missingConfigDir))) {
-      final MappedResults<ArtifactSigner> result =
-          signerLoaderWithInvalidConfigDir.load(signerParser);
+      final SignerSourceResult result = signerLoaderWithInvalidConfigDir.load(signerParser);
 
-      assertThat(result.getValues()).isEmpty();
-      assertThat(result.getErrorCount()).isOne();
+      assertThat(result.artifactSigners()).isEmpty();
+      assertThat(result.errorCount()).isOne();
+      assertThat(result.sourceFailed()).isTrue();
     }
   }
 
@@ -193,20 +196,20 @@ class SignerLoaderTest {
     createFileInConfigsDirectory(filename1, privateKeyHex);
     createFileInConfigsDirectory(filename2, privateKeyHex);
 
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(1);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(1);
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
   void signerIdentifiersNotReturnedInvalidMetadataFile() throws IOException {
     createEmptyFileInConfigsDirectory(configFileName(blsKeyPair1));
     createEmptyFileInConfigsDirectory(configFileName(blsKeyPair2));
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isEqualTo(2);
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.errorCount()).isEqualTo(2);
   }
 
   @Test
@@ -218,12 +221,12 @@ class SignerLoaderTest {
     FileHiddenUtil.makeFileHidden(hiddenFile);
     createFileInConfigsDirectory(configFileName(blsKeyPair2), privateKeyHex2);
 
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(1);
-    assertThat(result.getValues().stream().findFirst().orElseThrow().getIdentifier())
+    assertThat(result.artifactSigners()).hasSize(1);
+    assertThat(result.artifactSigners().stream().findFirst().orElseThrow().getIdentifier())
         .isEqualTo(blsKeyPair2.getPublicKey().toHexString());
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
@@ -236,11 +239,11 @@ class SignerLoaderTest {
     createFileInConfigsDirectory(configFileName(blsKeyPair2), privateKeyHex2);
     createFileInConfigsDirectory(configFileName(blsKeyPair3), privateKeyHex3);
 
-    MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(3);
+    assertThat(result.artifactSigners()).hasSize(3);
     assertThat(
-            result.getValues().stream()
+            result.artifactSigners().stream()
                 .map(ArtifactSigner::getIdentifier)
                 .collect(Collectors.toList()))
         .containsOnly(
@@ -259,11 +262,11 @@ class SignerLoaderTest {
     createFileInConfigsDirectory(configFileName(blsKeyPair2), privateKeyHex2);
     createFileInConfigsDirectory(configFileName(blsKeyPair3), privateKeyHex3);
 
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(3);
+    assertThat(result.artifactSigners()).hasSize(3);
     assertThat(
-            result.getValues().stream()
+            result.artifactSigners().stream()
                 .map(ArtifactSigner::getIdentifier)
                 .collect(Collectors.toList()))
         .containsOnly(
@@ -271,8 +274,8 @@ class SignerLoaderTest {
             blsKeyPair2.getPublicKey().toHexString(),
             blsKeyPair3.getPublicKey().toHexString());
 
-    final MappedResults<ArtifactSigner> reloadedResult = signerLoader.load(signerParser);
-    assertThat(reloadedResult.getValues()).hasSize(3);
+    final SignerSourceResult reloadedResult = signerLoader.load(signerParser);
+    assertThat(reloadedResult.artifactSigners()).hasSize(3);
   }
 
   @Test
@@ -285,11 +288,11 @@ class SignerLoaderTest {
     createFileInConfigsDirectory(configFileName(blsKeyPair2), privateKeyHex2);
     createFileInConfigsDirectory(configFileName(blsKeyPair3), privateKeyHex3);
 
-    final MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    final SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(3);
+    assertThat(result.artifactSigners()).hasSize(3);
     assertThat(
-            result.getValues().stream()
+            result.artifactSigners().stream()
                 .map(ArtifactSigner::getIdentifier)
                 .collect(Collectors.toList()))
         .containsOnly(
@@ -301,7 +304,7 @@ class SignerLoaderTest {
     Files.delete(configsDirectory.resolve(configFileName(blsKeyPair3)));
 
     final Collection<ArtifactSigner> reloadedArtifactSigner =
-        signerLoader.load(signerParser).getValues();
+        signerLoader.load(signerParser).artifactSigners();
     assertThat(reloadedArtifactSigner).hasSize(2);
     assertThat(
             reloadedArtifactSigner.stream()
@@ -333,16 +336,16 @@ class SignerLoaderTest {
           configFileName(blsKey), blsKey.getSecretKey().toBytes().toHexString());
     }
 
-    MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(15000);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(15000);
+    assertThat(result.errorCount()).isZero();
 
     // loading again will return cached results - verify no new files processed
     SignerLoader spyLoader = spy(signerLoader);
     result = spyLoader.load(signerParser);
-    assertThat(result.getValues()).hasSize(15000);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(15000);
+    assertThat(result.errorCount()).isZero();
 
     // Verify processFile was never called (all cached)
     verify(spyLoader, never()).processFile(any(), any(), any(), anyInt());
@@ -356,8 +359,8 @@ class SignerLoaderTest {
 
     // load again. Total should assert to 21005
     result = signerLoader.load(signerParser);
-    assertThat(result.getValues()).hasSize(21005);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(21005);
+    assertThat(result.errorCount()).isZero();
   }
 
   @Test
@@ -370,10 +373,10 @@ class SignerLoaderTest {
       blsKeys.add(blsKey);
     }
 
-    MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+    SignerSourceResult result = signerLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(5);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(5);
+    assertThat(result.errorCount()).isZero();
 
     // rewrite 3 files again, should result in new timestamp, hence reloaded
     Thread.sleep(10); // Ensure different timestamp
@@ -387,11 +390,83 @@ class SignerLoaderTest {
     SignerLoader spyLoader = spy(signerLoader);
     result = spyLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(5);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(5);
+    assertThat(result.errorCount()).isZero();
 
     // Verify processFile called for the 3 modified files
     verify(spyLoader, times(3)).processFile(any(), eq(signerParser), any(), eq(3));
+  }
+
+  @Test
+  void modifiedFileThatFailsToParseIsReportedAndRetried() throws Exception {
+    final Path path1 =
+        createFileInConfigsDirectory(
+            configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
+    createFileInConfigsDirectory(
+        configFileName(blsKeyPair2), blsKeyPair2.getSecretKey().toBytes().toHexString());
+
+    SignerSourceResult result = signerLoader.load(signerParser);
+    assertThat(result.artifactSigners()).hasSize(2);
+    assertThat(result.errorCount()).isZero();
+    assertThat(result.failedFiles()).isEmpty();
+
+    // corrupt file 1 and bump its modified time
+    final FileTime originalTime = Files.getLastModifiedTime(path1);
+    Files.writeString(path1, "NOT_A_VALID_KEY");
+    Files.setLastModifiedTime(path1, FileTime.fromMillis(originalTime.toMillis() + 1000));
+
+    result = signerLoader.load(signerParser);
+    // the failing file is named, so that the provider keeps the signer it previously loaded from
+    // it; the other signers are unaffected
+    assertThat(result.failedFiles()).containsExactly(path1.toString());
+    assertThat(identifiers(result)).containsExactly(blsKeyPair2.getPublicKey().toHexString());
+    assertThat(result.errorCount()).isOne();
+
+    // the failing file is processed again on the next load
+    final SignerLoader spyLoader = spy(signerLoader);
+    result = spyLoader.load(signerParser);
+    verify(spyLoader, times(1)).processFile(any(), eq(signerParser), any(), eq(1));
+    assertThat(result.failedFiles()).containsExactly(path1.toString());
+    assertThat(result.errorCount()).isOne();
+
+    // fixing the file clears the error
+    createFileInConfigsDirectory(
+        configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
+    Files.setLastModifiedTime(path1, FileTime.fromMillis(originalTime.toMillis() + 2000));
+    result = spyLoader.load(signerParser);
+    assertThat(result.artifactSigners()).hasSize(2);
+    assertThat(result.errorCount()).isZero();
+
+    // a deleted file is removed
+    Files.delete(path1);
+    result = spyLoader.load(signerParser);
+    assertThat(identifiers(result)).containsExactly(blsKeyPair2.getPublicKey().toHexString());
+    assertThat(result.errorCount()).isZero();
+  }
+
+  @Test
+  void inaccessibleConfigDirectoryReportsSourceFailure() throws Exception {
+    final Path subDirectory = Files.createDirectory(configsDirectory.resolve("sub"));
+    createFileInDirectory(
+        subDirectory,
+        configFileName(blsKeyPair1),
+        blsKeyPair1.getSecretKey().toBytes().toHexString());
+    createFileInDirectory(
+        subDirectory,
+        configFileName(blsKeyPair2),
+        blsKeyPair2.getSecretKey().toBytes().toHexString());
+
+    try (SignerLoader subDirectoryLoader =
+        new SignerLoader(SignerLoaderConfig.withDefaults(subDirectory))) {
+      assertThat(subDirectoryLoader.load(signerParser).artifactSigners()).hasSize(2);
+
+      FileUtils.deleteDirectory(subDirectory.toFile());
+
+      final SignerSourceResult result = subDirectoryLoader.load(signerParser);
+      assertThat(result.artifactSigners()).isEmpty();
+      assertThat(result.errorCount()).isOne();
+      assertThat(result.sourceFailed()).isTrue();
+    }
   }
 
   // ==================== TIMEOUT BEHAVIOR TESTS ====================
@@ -407,11 +482,11 @@ class SignerLoaderTest {
     // Create loader with 2 second timeout
     try (SignerLoader testLoader =
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, 500, 2, 1))) {
-      MappedResults<ArtifactSigner> result = testLoader.load(slowParser);
+      SignerSourceResult result = testLoader.load(slowParser);
 
       // All tasks should timeout and be cancelled
-      assertThat(result.getErrorCount()).isEqualTo(3);
-      assertThat(result.getValues()).isEmpty();
+      assertThat(result.errorCount()).isEqualTo(3);
+      assertThat(result.artifactSigners()).isEmpty();
     }
   }
 
@@ -425,11 +500,11 @@ class SignerLoaderTest {
     // Create loader with 1 second timeout (should succeed with 500ms tasks)
     try (SignerLoader testLoader =
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, 500, 1, 1))) {
-      MappedResults<ArtifactSigner> result = testLoader.load(slowParser);
+      SignerSourceResult result = testLoader.load(slowParser);
 
       // Tasks should complete within timeout
-      assertThat(result.getErrorCount()).isZero();
-      assertThat(result.getValues()).hasSize(2);
+      assertThat(result.errorCount()).isZero();
+      assertThat(result.artifactSigners()).hasSize(2);
     }
   }
 
@@ -477,10 +552,10 @@ class SignerLoaderTest {
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, batchSize, 60, 100))) {
 
       SignerLoader spyLoader = spy(testLoader);
-      MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(fileCount);
-      assertThat(result.getErrorCount()).isZero();
+      assertThat(result.artifactSigners()).hasSize(fileCount);
+      assertThat(result.errorCount()).isZero();
 
       // Should use parallel processing
       verify(spyLoader, times(1)).processInBatches(any(), eq(signerParser), any(), eq(fileCount));
@@ -553,10 +628,10 @@ class SignerLoaderTest {
     createBLSRawConfigFiles(50);
 
     SignerLoader spyLoader = spy(signerLoader);
-    MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+    SignerSourceResult result = spyLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(50);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(50);
+    assertThat(result.errorCount()).isZero();
 
     // Verify sequential processing was used
     verify(spyLoader, times(1)).processSequentially(any(), eq(signerParser), any(), eq(50));
@@ -569,10 +644,10 @@ class SignerLoaderTest {
     createBLSRawConfigFiles(150);
 
     SignerLoader spyLoader = spy(signerLoader);
-    final MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+    final SignerSourceResult result = spyLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(150);
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).hasSize(150);
+    assertThat(result.errorCount()).isZero();
 
     // Verify parallel processing was used
     verify(spyLoader, times(1)).processInBatches(any(), eq(signerParser), any(), eq(150));
@@ -587,10 +662,10 @@ class SignerLoaderTest {
     try (SignerLoader testLoader =
         new SignerLoader(new SignerLoaderConfig(configsDirectory, false, 1, 60, 1))) {
       SignerLoader spyLoader = spy(testLoader);
-      final MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      final SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(200);
-      assertThat(result.getErrorCount()).isZero();
+      assertThat(result.artifactSigners()).hasSize(200);
+      assertThat(result.errorCount()).isZero();
 
       // Verify sequential processing was used despite file count
       verify(spyLoader, times(1)).processSequentially(any(), eq(signerParser), any(), eq(200));
@@ -607,9 +682,9 @@ class SignerLoaderTest {
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, 500, 60, 50))) {
 
       SignerLoader spyLoader = spy(testLoader);
-      final MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      final SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(75);
+      assertThat(result.artifactSigners()).hasSize(75);
 
       // With 75 files and threshold of 50, should use parallel processing
       verify(spyLoader, times(1)).processInBatches(any(), eq(signerParser), any(), eq(75));
@@ -631,16 +706,16 @@ class SignerLoaderTest {
     try (SignerLoader testLoader =
         new SignerLoader(new SignerLoaderConfig(configsDirectory, false, 100, 60, 100))) {
       SignerLoader spyLoader = spy(testLoader);
-      final MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      final SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(10);
+      assertThat(result.artifactSigners()).hasSize(10);
 
       // Verify all expected signers are present
       final List<String> expectedIds =
           keyPairs.stream().map(kp -> kp.getPublicKey().toHexString()).collect(Collectors.toList());
 
       final List<String> actualIds =
-          result.getValues().stream()
+          result.artifactSigners().stream()
               .map(ArtifactSigner::getIdentifier)
               .collect(Collectors.toList());
 
@@ -655,10 +730,10 @@ class SignerLoaderTest {
   void emptyDirectoryReturnsNoSigners() {
     // Don't create any files
     SignerLoader spyLoader = spy(signerLoader);
-    MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+    SignerSourceResult result = spyLoader.load(signerParser);
 
-    assertThat(result.getValues()).isEmpty();
-    assertThat(result.getErrorCount()).isZero();
+    assertThat(result.artifactSigners()).isEmpty();
+    assertThat(result.errorCount()).isZero();
 
     // Verify neither processing method was called
     verify(spyLoader, never()).processSequentially(any(), any(), any(), anyInt());
@@ -673,9 +748,9 @@ class SignerLoaderTest {
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, 500, 60, 100))) {
 
       SignerLoader spyLoader = spy(testLoader);
-      MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(100);
+      assertThat(result.artifactSigners()).hasSize(100);
 
       // At threshold boundary (not below), should use parallel
       verify(spyLoader, times(1)).processInBatches(any(), eq(signerParser), any(), eq(100));
@@ -690,9 +765,9 @@ class SignerLoaderTest {
     try (SignerLoader testLoader =
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, 500, 60, 100))) {
       SignerLoader spyLoader = spy(testLoader);
-      MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(99);
+      assertThat(result.artifactSigners()).hasSize(99);
 
       // Below threshold (99 < 100), should use sequential
       verify(spyLoader, times(1)).processSequentially(any(), eq(signerParser), any(), eq(99));
@@ -708,9 +783,9 @@ class SignerLoaderTest {
         new SignerLoader(new SignerLoaderConfig(configsDirectory, true, 500, 60, 100))) {
 
       SignerLoader spyLoader = spy(testLoader);
-      MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(101);
+      assertThat(result.artifactSigners()).hasSize(101);
 
       // Just above threshold should use parallel
       verify(spyLoader, times(1)).processInBatches(any(), eq(signerParser), any(), eq(101));
@@ -726,6 +801,40 @@ class SignerLoaderTest {
     assertThatThrownBy(() -> signerLoader.load(signerParser))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("SignerLoader instance has been closed");
+  }
+
+  @Test
+  void filesNotProcessedBeforeLoaderIsClosedAreReportedAsFailed() throws Exception {
+    final Set<String> files =
+        Set.of(
+            configsDirectory.resolve("1.yaml").toString(),
+            configsDirectory.resolve("2.yaml").toString());
+    signerLoader.close();
+
+    final SignerLoader.LoadResult result =
+        signerLoader.processInBatches(files, signerParser, new AtomicLong(), files.size());
+
+    // the files were not deleted, so their previously loaded signers must be kept
+    assertThat(result.loadedSigners()).isEmpty();
+    assertThat(result.failedPaths()).containsExactlyInAnyOrderElementsOf(files);
+  }
+
+  @Test
+  void interruptedFileIsReportedAsFailed() throws Exception {
+    final Path file =
+        createFileInConfigsDirectory(
+            configFileName(blsKeyPair1), blsKeyPair1.getSecretKey().toBytes().toHexString());
+
+    final SignerLoader.LoadResult result;
+    Thread.currentThread().interrupt();
+    try {
+      result = signerLoader.processFile(file.toString(), signerParser, new AtomicLong(), 1);
+    } finally {
+      Thread.interrupted();
+    }
+
+    assertThat(result.loadedSigners()).isEmpty();
+    assertThat(result.failedPaths()).containsExactly(file.toString());
   }
 
   @Test
@@ -750,14 +859,14 @@ class SignerLoaderTest {
     createBLSRawConfigFiles(50);
 
     // First load
-    MappedResults<ArtifactSigner> firstResult = signerLoader.load(signerParser);
-    assertThat(firstResult.getValues()).hasSize(50);
+    SignerSourceResult firstResult = signerLoader.load(signerParser);
+    assertThat(firstResult.artifactSigners()).hasSize(50);
 
     // Create spy for second load
     SignerLoader spyLoader = spy(signerLoader);
-    MappedResults<ArtifactSigner> secondResult = spyLoader.load(signerParser);
+    SignerSourceResult secondResult = spyLoader.load(signerParser);
 
-    assertThat(secondResult.getValues()).hasSize(50);
+    assertThat(secondResult.artifactSigners()).hasSize(50);
 
     // Verify no files were processed (all cached)
     verify(spyLoader, never()).processFile(any(), any(), any(), anyInt());
@@ -778,9 +887,9 @@ class SignerLoaderTest {
 
     // Create spy for reload
     SignerLoader spyLoader = spy(signerLoader);
-    MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+    SignerSourceResult result = spyLoader.load(signerParser);
 
-    assertThat(result.getValues()).hasSize(15);
+    assertThat(result.artifactSigners()).hasSize(15);
 
     // Verify only 5 new files were processed
     verify(spyLoader, times(5)).processFile(any(), eq(signerParser), any(), eq(5));
@@ -804,10 +913,10 @@ class SignerLoaderTest {
       signerLoader = new SignerLoader(new SignerLoaderConfig(testDir, true, 100, 60, 100));
 
       SignerLoader spyLoader = spy(signerLoader);
-      MappedResults<ArtifactSigner> result = spyLoader.load(signerParser);
+      SignerSourceResult result = spyLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(size);
-      assertThat(result.getErrorCount()).isZero();
+      assertThat(result.artifactSigners()).hasSize(size);
+      assertThat(result.errorCount()).isZero();
 
       // Calculate expected number of batches
       boolean shouldUseParallel = size >= 100;
@@ -849,11 +958,15 @@ class SignerLoaderTest {
 
       signerLoader = new SignerLoader(SignerLoaderConfig.withDefaults(testDir));
 
-      MappedResults<ArtifactSigner> result = signerLoader.load(signerParser);
+      SignerSourceResult result = signerLoader.load(signerParser);
 
-      assertThat(result.getValues()).hasSize(count);
-      assertThat(result.getErrorCount()).isZero();
+      assertThat(result.artifactSigners()).hasSize(count);
+      assertThat(result.errorCount()).isZero();
     }
+  }
+
+  private static List<String> identifiers(final SignerSourceResult result) {
+    return result.artifactSigners().stream().map(ArtifactSigner::getIdentifier).toList();
   }
 
   // ==================== HELPER METHODS ====================

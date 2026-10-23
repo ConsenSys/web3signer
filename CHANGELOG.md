@@ -5,6 +5,7 @@
 - Unscheduled the Gloas (Glamsterdam) fork for the Hoodi network, which was previously scheduled at epoch 132352 (26 Oct 2026 17:42:48 UTC). Teku libraries updated to 26.10.2. Required update for the Hoodi network.
 
 ### Bugs Fixed
+- `POST /reload` no longer disables validators when a keystore source fails to load: a file or source that fails keeps its previously loaded keys (commit-boost proxy keys included), while deleted keys are still removed in the same reload. A directory that can be read and is empty counts as all of its keys deleted. [#1248][issue_1248] [#1252][issue_1252] Fix via [#1251][PR_1251].
 
 ### Breaking Changes
 
@@ -12,6 +13,9 @@
 
 ### Security
 
+[issue_1248]: https://github.com/Consensys-Incorporated/web3signer/issues/1248
+[issue_1252]: https://github.com/Consensys-Incorporated/web3signer/issues/1252
+[PR_1251]: https://github.com/Consensys-Incorporated/web3signer/pull/1251
 
 ---
 ## 26.10.0
