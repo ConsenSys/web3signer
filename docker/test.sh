@@ -36,6 +36,7 @@ mkdir -p "$REPORTS_DIR"
 # Create test Docker image that includes the test key file and password files
 TEST_CONTAINER_ID=$(docker create "$DOCKER_IMAGE")
 docker commit "$TEST_CONTAINER_ID" "$DOCKER_TEST_IMAGE"
+docker rm "$TEST_CONTAINER_ID" > /dev/null
 
 # Initialize the exit code
 i=0
